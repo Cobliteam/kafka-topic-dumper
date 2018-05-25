@@ -55,11 +55,11 @@ class KafkaClient(object):
         for tp in topic_partition:
             offset = self.consumer.committed(tp)
             commited_offsets[tp] = offset
-            logger.info(msg.format(tp, offset, self.group_id))
+            logger.debug(msg.format(tp, offset, self.group_id))
 
         end_offsets = self.consumer.end_offsets(topic_partition)
         msg = "Got the following end offsets=<{}>"
-        logger.warn(msg.format(end_offsets))
+        logger.info(msg.format(end_offsets))
 
         return beginning_offsets, commited_offsets, end_offsets
 
