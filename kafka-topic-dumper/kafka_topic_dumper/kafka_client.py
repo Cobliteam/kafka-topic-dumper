@@ -87,7 +87,7 @@ class KafkaClient(object):
 
         self.consumer.commit(offset_and_metadata)
 
-    def _get_messages(self, num_messages_to_consume, file_name, s3_client):
+    def _get_messages(self, num_messages_to_consume, dir_path, file_name):
         messages = []
         while len(messages) < num_messages_to_consume:
             record = next(self.consumer)
@@ -96,24 +96,28 @@ class KafkaClient(object):
 
         self.consumer.commit()
 
+        file_path = path.join(dir_path, file_name)
+
         df = pd.DataFrame(messages)
         table = pa.Table.from_pandas(df)
-        pq.write_table(table, file_name, compression='gzip')
+        pq.write_table(table, file_path, compression='gzip')
 
-        source_path = file_name
-
-        s3_client.upload_file(
-            source_path,
-            'cobli-alexstrasza-stress-test',
-            file_name,
-            ExtraArgs={'ACL': 'private'},
-            Callback=ProgressPercentage(source_path))
-
-        msg = 'Get the following messages=<{}>'
+        msg = 'Got the following messages=<{}>'
         logger.debug(msg.format(messages))
 
+    def _send_dump_file(self, dir_path, file_name, bucket_name, s3_client):
+        if s3_client:
+            file_path = path.join(dir_path, file_name)
+            logger.info('Sending file <{}> to s3'.format(file_name))
+            s3_client.upload_file(
+                file_path,
+                bucket_name,
+                file_name,
+                ExtraArgs={'ACL': 'private'},
+                Callback=ProgressPercentage(file_path))
+
     def get_messages(self, num_messages_to_consume, max_package_size_in_msgs,
-                     dir_path):
+                     dir_path, bucket_name, dry_run):
 
         msg = ('Will ask kafka for <{}> messages ' +
                'and save it in files with <{}> messages')
@@ -131,10 +135,12 @@ class KafkaClient(object):
         self._set_offsets(offsets=offsets)
         self.consumer.subscribe(topics=[self.topic])
 
-        s3_client = boto3.client('s3')
-
         msg = 'Trying to dump <{}> messages'
         logger.info(msg.format(num_messages_available))
+
+        s3_client = None
+        if not dry_run:
+            s3_client = boto3.client('s3')
 
         remaining_messages = num_messages_available
         num_dumped_messages = 0
@@ -148,9 +154,14 @@ class KafkaClient(object):
                 + '{:015d}'.format(num_dumped_messages)
                 + '.parquet')
             self._get_messages(
-                batch_size,
-                path.join(dir_path, file_name),
-                s3_client)
+                num_messages_to_consume=batch_size,
+                dir_path=dir_path,
+                file_name=file_name)
+            self._send_dump_file(
+                dir_path=dir_path,
+                file_name=file_name,
+                bucket_name=bucket_name,
+                s3_client=s3_client)
             remaining_messages -= batch_size
             num_dumped_messages += batch_size
 
