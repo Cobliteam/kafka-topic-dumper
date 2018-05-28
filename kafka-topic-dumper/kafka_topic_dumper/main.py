@@ -28,13 +28,14 @@ def main():
                              'servers are specified, will default to '
                              'localhost:9092.')
 
-    parser.add_argument('-n', '--num-messages', default=300,
+    parser.add_argument('-n', '--num-messages', default=300, type=int,
                         help='Number of messages to try dump.')
 
     parser.add_argument('-p', '--path', default='./data',
                         help='Path to folder where storage local dump files.')
 
     parser.add_argument('-m', '--max-messages-per-package', default=100,
+                        type=int,
                         help='Maximum number of messages per dump file.')
 
     parser.add_argument('-d', '--dry-run', action='store_true',
