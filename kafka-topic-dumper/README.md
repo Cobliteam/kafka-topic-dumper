@@ -54,7 +54,7 @@ optional arguments:
   -d, --dry-run         In dry run mode, kafka-topic-dumper will generate
                         local files. But will not send it to AWS S3 bucket.
   -b BUCKET_NAME, --bucket-name BUCKET_NAME
-                        Maximum number of messages per dump file.
+                        The AWS-S3 bucket name to send dump files.
 ```
 
 ## Basic example

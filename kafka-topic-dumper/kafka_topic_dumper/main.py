@@ -42,7 +42,7 @@ def main():
                              'AWS S3 bucket.')
 
     parser.add_argument('-b', '--bucket-name', default='kafka-topic-dumper',
-                        help='Maximum number of messages per dump file.')
+                        help='The AWS-S3 bucket name to send dump files.')
 
     opts = parser.parse_args()
 
