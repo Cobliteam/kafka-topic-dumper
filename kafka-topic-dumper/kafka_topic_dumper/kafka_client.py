@@ -32,7 +32,6 @@ class KafkaClient(object):
         try:
             self.consumer = KafkaConsumer(
                 bootstrap_servers=self.bootstrap_servers,
-                key_deserializer=lambda x: b'None' if x is None else x,
                 group_id=self.group_id,
                 enable_auto_commit=False)
         except Exception as err:
