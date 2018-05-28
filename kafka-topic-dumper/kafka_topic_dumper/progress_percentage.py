@@ -8,9 +8,12 @@ logger.setLevel(logging.INFO)
 
 
 class ProgressPercentage(object):
-    def __init__(self, filename):
+    def __init__(self, filename, filesize=None):
         self._filename = filename
-        self._size = float(os.path.getsize(filename))
+        if filesize is not None:
+            self._size = filesize
+        else:
+            self._size = float(os.path.getsize(filename))
         self._seen_so_far = 0
         self._lock = threading.Lock()
 

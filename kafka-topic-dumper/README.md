@@ -34,6 +34,7 @@ $kafka-topic-dumper -h
 usage: kafka-topic-dumper [-h] [-t TOPIC] [-s BOOTSTRAP_SERVERS]
                           [-n NUM_MESSAGES] [-p PATH]
                           [-m MAX_MESSAGES_PER_PACKAGE] [-d] [-b BUCKET_NAME]
+                          [-x PREFIX] [-l]
 
 Simple tool to dump kafka messages and send it to AWS S3
 
@@ -55,6 +56,14 @@ optional arguments:
                         local files. But will not send it to AWS S3 bucket.
   -b BUCKET_NAME, --bucket-name BUCKET_NAME
                         The AWS-S3 bucket name to send dump files.
+  -x PREFIX, --prefix PREFIX
+                        The prefix of files to be downloaded from AWS-S3. this
+                        option is only used in reload mode(option -d). If no
+                        value is passed, the program assumes that files are
+                        named in the form TIMESTAMP-*.parquet and the gratest
+                        timestamp will be used.
+  -l, --reload          Reload mode will download files from kafka and send it
+                        to kafka
 ```
 
 ## Basic example

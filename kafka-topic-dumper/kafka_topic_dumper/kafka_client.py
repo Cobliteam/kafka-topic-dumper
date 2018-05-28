@@ -4,7 +4,7 @@ from os import path, remove
 
 import boto3
 
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 from kafka.structs import OffsetAndMetadata, TopicPartition
 
 import pandas as pd
@@ -19,12 +19,21 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def bytes_serializer(value):
+    if value is None:
+        return
+    if type(value) is bytes:
+        return value
+    return str.encode(value)
+
+
 class KafkaClient(object):
     def __init__(self, group_id, bootstrap_servers, topic):
         self.group_id = group_id
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
         self.consumer = None
+        self.producer = None
 
     def _get_consumer(self):
         if self.consumer is not None:
@@ -44,6 +53,25 @@ class KafkaClient(object):
         self.consumer.close()
         self.consumer = None
 
+    def _get_producer(self):
+        if self.producer is not None:
+            return
+        try:
+            self.producer = KafkaProducer(
+                bootstrap_servers=self.bootstrap_servers,
+                key_serializer=bytes_serializer,
+                value_serializer=bytes_serializer)
+        except Exception as err:
+            msg = 'Can not create KafkaProducer instance. Reason=<{}>'
+            logger.exception(msg.format(err))
+            raise err
+
+    def _close_producer(self):
+        logger.info("Closing producer")
+        self.producer.flush()
+        logger.debug('Statistics {}'.format(self.producer.metrics()))
+        self.producer.close()
+        self.producer = None
 
     def _get_offsets(self):
         partitions = self.consumer.partitions_for_topic(self.topic)
@@ -179,3 +207,44 @@ class KafkaClient(object):
         logger.info('Dump done!')
 
         self._close_consumer()
+
+    def reload_kafka_server(self, bucket_name, dir_path, dump_prefix=None):
+        self._get_producer()
+
+        # get file list
+        s3_client = boto3.client('s3')
+
+        if dump_prefix is None:
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                Delimiter='-')
+            prefixes = [p['Prefix'].replace('-', '')
+                        for p in response['CommonPrefixes']]
+            dump_prefix = max(prefixes)
+            print(dump_prefix)
+
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=dump_prefix)
+
+        file_names = []
+        if response['KeyCount'] > 0:
+            file_names = [(f['Key'], f['Size']) for f in response['Contents']]
+
+        # reload files to kafka
+        for file_name, file_size in file_names:
+            file_path = path.join(dir_path, '{}.tmp'.format(file_name))
+            s3_client.download_file(
+                Bucket=bucket_name,
+                Filename=file_path,
+                Key=file_name,
+                Callback=ProgressPercentage(
+                    '{}.tmp'.format(file_name),
+                    file_size))
+            table = pq.read_table(file_path)
+            df = table.to_pandas()
+            for row in df.itertuples():
+                future = self.producer.send(self.topic, key=row[1],
+                                            value=row[2])
+                future.get(timeout=1)
+            remove(file_path)

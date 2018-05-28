@@ -40,6 +40,18 @@ def parse_command_line():
     parser.add_argument('-b', '--bucket-name', default='kafka-topic-dumper',
                         help='The AWS-S3 bucket name to send dump files.')
 
+    parser.add_argument('-x', '--prefix', default=None,
+                        help='The prefix of files to be downloaded from '
+                             'AWS-S3. this option is only used in reload '
+                             'mode(option -d). If no value is passed, '
+                             'the program assumes that files are named in the '
+                             'form TIMESTAMP-*.parquet and the gratest '
+                             'timestamp will be used.')
+
+    parser.add_argument('-l', '--reload', action='store_true',
+                        help='Reload mode will download files from kafka and '
+                             'send it to kafka')
+
     opts = parser.parse_args()
 
     return opts
@@ -60,15 +72,24 @@ def main():
     dry_run = opts.dry_run
     group_id = 'kafka_topic_dumper'
     bucket_name = opts.bucket_name
+    reload_mode = opts.reload
+    prefix = opts.prefix
 
     kafka_client = KafkaClient(
         topic=topic,
         group_id=group_id,
         bootstrap_servers=bootstrap_servers)
 
-    kafka_client.get_messages(
-        num_messages_to_consume=num_messages_to_consume,
-        max_package_size_in_msgs=max_messages_per_package,
-        dir_path=dir_path_to_save_files,
-        bucket_name=bucket_name,
-        dry_run=dry_run)
+    if reload_mode:
+        kafka_client.reload_kafka_server(
+            bucket_name=bucket_name,
+            dir_path=dir_path_to_save_files,
+            dump_prefix=prefix)
+
+    else:
+        kafka_client.get_messages(
+            num_messages_to_consume=num_messages_to_consume,
+            max_package_size_in_msgs=max_messages_per_package,
+            dir_path=dir_path_to_save_files,
+            bucket_name=bucket_name,
+            dry_run=dry_run)
