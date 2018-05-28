@@ -50,23 +50,23 @@ class KafkaClient(object):
         msg = "Got the following partitions=<{}> for topic=<{}>"
         logger.info(msg.format(partitions, self.topic))
 
-        topic_partition = list(
+        topic_partitions = list(
             map(lambda p: TopicPartition(self.topic, p), partitions))
         msg = "Got the following topic partitions=<{}>"
-        logger.info(msg.format(topic_partition))
+        logger.info(msg.format(topic_partitions))
 
-        beginning_offsets = self.consumer.beginning_offsets(topic_partition)
+        beginning_offsets = self.consumer.beginning_offsets(topic_partitions)
         msg = "Got the following beginning offsets=<{}>"
         logger.info(msg.format(beginning_offsets))
 
         commited_offsets = {}
         msg = "Partition=<{}> has the current offset=<{}> for <{}>"
-        for tp in topic_partition:
+        for tp in topic_partitions:
             offset = self.consumer.committed(tp)
             commited_offsets[tp] = offset
             logger.debug(msg.format(tp, offset, self.group_id))
 
-        end_offsets = self.consumer.end_offsets(topic_partition)
+        end_offsets = self.consumer.end_offsets(topic_partitions)
         msg = "Got the following end offsets=<{}>"
         logger.info(msg.format(end_offsets))
 
