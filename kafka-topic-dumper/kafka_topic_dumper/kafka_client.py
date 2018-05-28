@@ -131,6 +131,7 @@ class KafkaClient(object):
     def get_messages(self, num_messages_to_consume, max_package_size_in_msgs,
                      dir_path, bucket_name, dry_run):
 
+        # set offsets
         msg = ('Will ask kafka for <{}> messages ' +
                'and save it in files with <{}> messages')
         logger.debug(msg.format(num_messages_to_consume,
@@ -145,6 +146,8 @@ class KafkaClient(object):
             num_messages_to_consume=num_messages_to_consume)
 
         self._set_offsets(offsets=offsets)
+
+        # get messages
         self.consumer.subscribe(topics=[self.topic])
 
         msg = 'Trying to dump <{}> messages'
