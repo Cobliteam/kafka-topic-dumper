@@ -8,11 +8,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def main():
-    logging.basicConfig(
-        format='%(asctime)s: %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S')
-
+def parse_command_line():
     parser = argparse.ArgumentParser(
         description='Simple tool to dump kafka messages and send it to AWS S3')
 
@@ -45,6 +41,16 @@ def main():
                         help='The AWS-S3 bucket name to send dump files.')
 
     opts = parser.parse_args()
+
+    return opts
+
+
+def main():
+    logging.basicConfig(
+        format='%(asctime)s: %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S')
+
+    opts = parse_command_line()
 
     topic = opts.topic
     bootstrap_servers = opts.bootstrap_servers
