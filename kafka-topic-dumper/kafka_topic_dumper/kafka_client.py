@@ -1,6 +1,6 @@
 import logging
 import time
-from os import path as path
+from os import path, remove
 
 import boto3
 
@@ -115,6 +115,8 @@ class KafkaClient(object):
                 file_name,
                 ExtraArgs={'ACL': 'private'},
                 Callback=ProgressPercentage(file_path))
+            logger.debug('Deleting file <{}>'.format(file_name))
+            remove(file_path)
 
     def get_messages(self, num_messages_to_consume, max_package_size_in_msgs,
                      dir_path, bucket_name, dry_run):
