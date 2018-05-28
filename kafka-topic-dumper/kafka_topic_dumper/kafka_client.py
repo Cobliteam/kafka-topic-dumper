@@ -75,7 +75,7 @@ class KafkaClient(object):
     def _calculate_offsets(self, beginning_offsets, end_offsets,
                            num_messages_to_consume):
         perfect_displacement = int(
-            num_messages_to_consume / len(beginning_offsets.items()))
+            num_messages_to_consume / len(beginning_offsets))
         offsets = {}
         num_messages_available = 0
 
