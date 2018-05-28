@@ -111,9 +111,6 @@ class KafkaClient(object):
         table = pa.Table.from_pandas(df)
         pq.write_table(table, file_path, compression='gzip')
 
-        msg = 'Got the following messages=<{}>'
-        logger.debug(msg.format(messages))
-
     def _send_dump_file(self, dir_path, file_name, bucket_name, s3_client):
         if s3_client:
             file_path = path.join(dir_path, file_name)
