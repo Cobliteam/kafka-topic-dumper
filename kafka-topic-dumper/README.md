@@ -11,9 +11,14 @@ Clone this repository:
 git clone git@github.com:Cobliteam/alexstrasza-stress-test.git
 ```
 
+Go to correct folder:
+```
+cd alexstrasza-stress-test/kafka-topic-dumper
+```
+
 Install it using setup.py file:
 ```
-pip install -e alexstrasza-stress-test/kafka-topic-dumper
+pip install -e .
 ```
 
 ## Configuration
