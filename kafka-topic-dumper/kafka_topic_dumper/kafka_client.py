@@ -88,8 +88,8 @@ class KafkaClient(object):
 
     def _set_offsets(self, offsets):
         offset_and_metadata = {
-                tp: OffsetAndMetadata(offset, b'') for
-                tp, offset in offsets.items()}
+            tp: OffsetAndMetadata(offset, b'') for
+            tp, offset in offsets.items()}
 
         msg = "Generated the following offsets=<{}>"
         logger.debug(msg.format(offset_and_metadata))

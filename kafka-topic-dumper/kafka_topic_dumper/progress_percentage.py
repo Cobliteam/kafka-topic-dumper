@@ -22,5 +22,5 @@ class ProgressPercentage(object):
             percentage = (self._seen_so_far / self._size) * 100
             msg = "{:40s}  {:10} / {:10}  ({:03g}%)"
             logger.info(msg.format(
-                    self._filename, self._seen_so_far, self._size,
-                    percentage))
+                self._filename, self._seen_so_far, self._size,
+                percentage))
