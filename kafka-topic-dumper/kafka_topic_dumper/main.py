@@ -1,13 +1,11 @@
-import logging
-
 import argparse
+import logging
 
 from kafka_topic_dumper.kafka_client import KafkaClient
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 
 
 def main():
@@ -45,7 +43,6 @@ def main():
 
     parser.add_argument('-b', '--bucket-name', default='kafka-topic-dumper',
                         help='Maximum number of messages per dump file.')
-
 
     opts = parser.parse_args()
 
