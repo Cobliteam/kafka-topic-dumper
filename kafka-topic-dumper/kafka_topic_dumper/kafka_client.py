@@ -141,7 +141,7 @@ class KafkaClient(object):
             end_offsets=end_offsets,
             num_messages_to_consume=num_messages_to_consume)
 
-        self._set_offsets(offsets=offsets)
+        self._set_offsets(offsets)
 
         # get messages
         self.consumer.subscribe(topics=[self.topic])
