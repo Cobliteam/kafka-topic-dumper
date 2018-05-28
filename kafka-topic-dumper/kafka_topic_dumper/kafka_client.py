@@ -24,17 +24,27 @@ class KafkaClient(object):
         self.group_id = group_id
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
+        self.consumer = None
 
     def _get_consumer(self):
-        self.consumer = KafkaConsumer(
-            bootstrap_servers=self.bootstrap_servers,
-            key_deserializer=lambda x: b'None' if x is None else x,
-            group_id=self.group_id,
-            enable_auto_commit=False)
+        if self.consumer is not None:
+            return
+        try:
+            self.consumer = KafkaConsumer(
+                bootstrap_servers=self.bootstrap_servers,
+                key_deserializer=lambda x: b'None' if x is None else x,
+                group_id=self.group_id,
+                enable_auto_commit=False)
+        except Exception as err:
+            msg = 'Can not create KafkaConsumer instance. Reason=<{}>'
+            logger.exception(msg.format(err))
+            raise err
 
     def _close_consumer(self):
         logger.info("Closing consumer")
         self.consumer.close()
+        self.consumer = None
+
 
     def _get_offsets(self):
         partitions = self.consumer.partitions_for_topic(self.topic)
