@@ -230,6 +230,7 @@ class KafkaClient(object):
         file_names = []
         if response['KeyCount'] > 0:
             file_names = [(f['Key'], f['Size']) for f in response['Contents']]
+        file_names.sort()
 
         # reload files to kafka
         for file_name, file_size in file_names:
