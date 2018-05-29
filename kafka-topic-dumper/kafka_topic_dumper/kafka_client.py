@@ -213,23 +213,26 @@ class KafkaClient(object):
 
         # get file list
         s3_client = boto3.client('s3')
+        paginator = s3_client.get_paginator('list_objects_v2')
 
         if dump_prefix is None:
-            response = s3_client.list_objects_v2(
-                Bucket=bucket_name,
-                Delimiter='-')
-            prefixes = [p['Prefix'].replace('-', '')
-                        for p in response['CommonPrefixes']]
+            response_iterator = paginator.paginate(Bucket=bucket_name,
+                                                   Delimiter='-')
+            prefixes = []
+            for response in response_iterator:
+                response_prefixes = [p['Prefix'].replace('-', '')
+                                     for p in response['CommonPrefixes']]
+                prefixes += response_prefixes
             dump_prefix = max(prefixes)
-            print(dump_prefix)
+            logger.info('Prefix chosen was <{}>'.format(dump_prefix))
 
-        response = s3_client.list_objects_v2(
-            Bucket=bucket_name,
-            Prefix=dump_prefix)
-
+        response_iterator = paginator.paginate(Bucket=bucket_name,
+                                               Prefix=dump_prefix)
         file_names = []
-        if response['KeyCount'] > 0:
-            file_names = [(f['Key'], f['Size']) for f in response['Contents']]
+        for response in response_iterator:
+            if response['KeyCount'] > 0:
+                file_names = [(f['Key'], f['Size'])
+                              for f in response['Contents']]
         file_names.sort()
 
         # reload files to kafka
@@ -248,4 +251,6 @@ class KafkaClient(object):
                 future = self.producer.send(self.topic, key=row[1],
                                             value=row[2])
                 future.get(timeout=1)
+            logger.debug('File <{}> reloaded to kafka'.format(file_path))
             remove(file_path)
+        logger.info('Reload done!')
