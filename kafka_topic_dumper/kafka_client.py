@@ -1,5 +1,6 @@
 import logging
 import time
+from math import ceil
 from os import path, remove
 
 import boto3
@@ -102,7 +103,7 @@ class KafkaClient(object):
 
     def _calculate_offsets(self, beginning_offsets, end_offsets,
                            num_messages_to_consume):
-        perfect_displacement = int(
+        perfect_displacement = ceil(
             num_messages_to_consume / len(beginning_offsets))
         offsets = {}
         num_messages_available = 0
