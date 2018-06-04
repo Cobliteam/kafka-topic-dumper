@@ -257,25 +257,27 @@ class KafkaClient(object):
             dump_prefix=dump_prefix,
             s3_client=s3_client)
 
-        self._get_producer()
+        try:
+            self._get_producer()
 
-        # reload files to kafka
-        for file_name, file_size in file_names:
-            file_path = path.join(dir_path, '{}.tmp'.format(file_name))
-            s3_client.download_file(
-                Bucket=bucket_name,
-                Filename=file_path,
-                Key=file_name,
-                Callback=ProgressPercentage(
-                    '{}.tmp'.format(file_name),
-                    file_size))
-            table = pq.read_table(file_path)
-            df = table.to_pandas()
-            for row in df.itertuples():
-                future = self.producer.send(self.topic, key=row[1],
-                                            value=row[2])
-                future.get(timeout=1)
-            logger.debug('File <{}> reloaded to kafka'.format(file_path))
-            remove(file_path)
+            for file_name, file_size in file_names:
+                file_path = path.join(dir_path, '{}.tmp'.format(file_name))
+                s3_client.download_file(
+                    Bucket=bucket_name,
+                    Filename=file_path,
+                    Key=file_name,
+                    Callback=ProgressPercentage(
+                        '{}.tmp'.format(file_name),
+                        file_size))
+                table = pq.read_table(file_path)
+                df = table.to_pandas()
+                for row in df.itertuples():
+                    future = self.producer.send(self.topic, key=row[1],
+                                                value=row[2])
+                    future.get(timeout=1)
+                logger.debug('File <{}> reloaded to kafka'.format(file_path))
+                remove(file_path)
+        finally:
+            self._close_producer()
+
         logger.info('Reload done!')
-        self._close_producer()
