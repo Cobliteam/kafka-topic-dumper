@@ -17,7 +17,7 @@ def on_send_error(excp):
 producer = KafkaProducer(bootstrap_servers=['localhost:9092'])
 
 logging.basicConfig()
-logger = logging.getLog(__name__)
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # produce asynchronously

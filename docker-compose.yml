@@ -1,0 +1,8 @@
+version: '2.3'
+services:
+  kafka-topic-dumper:
+    network_mode: host
+    build:
+      context: .
+    volumes:
+      - ./data/kafka-topic-dumper:/data
