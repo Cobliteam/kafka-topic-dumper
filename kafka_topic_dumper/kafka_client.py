@@ -222,13 +222,7 @@ class KafkaClient(object):
         for partition, offset in end_offsets.items():
             print(msg.format(partition.topic, partition.partition, offset))
 
-    def reload_kafka_server(self, bucket_name, dir_path, dump_prefix=None):
-
-        self._print_offsets()
-
-        # get file list
-        s3_client = boto3.client('s3')
-
+    def _get_file_names(self, bucket_name, dump_prefix, s3_client):
         paginator = s3_client.get_paginator('list_objects_v2')
 
         if dump_prefix is None:
@@ -250,6 +244,18 @@ class KafkaClient(object):
                 file_names = [(f['Key'], f['Size'])
                               for f in response['Contents']]
         file_names.sort()
+        return file_names
+
+    def reload_kafka_server(self, bucket_name, dir_path, dump_prefix=None):
+
+        self._print_offsets()
+
+        s3_client = boto3.client('s3')
+
+        file_names = self._get_file_names(
+            bucket_name=bucket_name,
+            dump_prefix=dump_prefix,
+            s3_client=s3_client)
 
         self._get_producer()
 
@@ -272,3 +278,4 @@ class KafkaClient(object):
             logger.debug('File <{}> reloaded to kafka'.format(file_path))
             remove(file_path)
         logger.info('Reload done!')
+        self._close_producer()
