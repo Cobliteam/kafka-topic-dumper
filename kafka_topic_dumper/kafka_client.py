@@ -209,11 +209,26 @@ class KafkaClient(object):
 
         self._close_consumer()
 
+    def _print_offsets(self):
+        try:
+            self._get_consumer()
+            _, _, end_offsets = self._get_offsets()
+        finally:
+            self._close_consumer()
+
+        print('TOPIC_NAME \t PARTITION \t\t OFFSET')
+
+        msg = '{:10s} \t {:9d} \t {:14d}'
+        for partition, offset in end_offsets.items():
+            print(msg.format(partition.topic, partition.partition, offset))
+
     def reload_kafka_server(self, bucket_name, dir_path, dump_prefix=None):
-        self._get_producer()
+
+        self._print_offsets()
 
         # get file list
         s3_client = boto3.client('s3')
+
         paginator = s3_client.get_paginator('list_objects_v2')
 
         if dump_prefix is None:
@@ -235,6 +250,8 @@ class KafkaClient(object):
                 file_names = [(f['Key'], f['Size'])
                               for f in response['Contents']]
         file_names.sort()
+
+        self._get_producer()
 
         # reload files to kafka
         for file_name, file_size in file_names:
