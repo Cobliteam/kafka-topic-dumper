@@ -49,8 +49,10 @@ def parse_command_line():
                              'timestamp will be used.')
 
     parser.add_argument('-l', '--reload', action='store_true',
-                        help='Reload mode will download files from kafka and '
-                             'send it to kafka')
+                        help='Reload mode will download files from AWS-S3 and '
+                             'send then to kafka. In this mode, the offsets '
+                             'for the informed topic will be printed to the'
+                             'stdout before producing any message')
 
     opts = parser.parse_args()
 
