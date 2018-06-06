@@ -1,6 +1,7 @@
 import logging
 import time
 from math import ceil
+import json
 from os import path, remove
 
 import boto3
@@ -35,6 +36,8 @@ class KafkaClient(object):
         self.topic = topic
         self.consumer = None
         self.producer = None
+        self.timeout = 1
+        self.dump_state_topic = 'kafka-topic-dumper'
 
     def _get_consumer(self):
         if self.consumer is not None:
@@ -80,21 +83,27 @@ class KafkaClient(object):
         self.producer.close()
         self.producer = None
 
-    def _get_offsets(self):
-        partitions = self.consumer.partitions_for_topic(self.topic)
     def close(self):
         self._close_consumer()
         self._close_producer()
 
+    def _get_partitions(self, topic):
+        partitions = self.consumer.partitions_for_topic(topic) or []
         msg = "Got the following partitions=<{}> for topic=<{}>"
-        logger.info(msg.format(partitions, self.topic))
+        logger.info(msg.format(partitions, topic))
 
         topic_partitions = list(
-            map(lambda p: TopicPartition(self.topic, p), partitions))
+            map(lambda p: TopicPartition(topic, p), partitions))
         msg = "Got the following topic partitions=<{}>"
         logger.info(msg.format(topic_partitions))
+        return topic_partitions
 
-        beginning_offsets = self.consumer.beginning_offsets(topic_partitions)
+    def _get_offsets(self, topic=None):
+        if topic is None:
+            topic = self.topic
+        topic_partitions = self._get_partitions(topic=topic)
+        beginning_offsets = (
+            self.consumer.beginning_offsets(topic_partitions) or {})
         msg = "Got the following beginning offsets=<{}>"
         logger.info(msg.format(beginning_offsets))
 
@@ -105,7 +114,7 @@ class KafkaClient(object):
             commited_offsets[tp] = offset
             logger.debug(msg.format(tp, offset, self.group_id))
 
-        end_offsets = self.consumer.end_offsets(topic_partitions)
+        end_offsets = self.consumer.end_offsets(topic_partitions) or {}
         msg = "Got the following end offsets=<{}>"
         logger.info(msg.format(end_offsets))
 
@@ -135,15 +144,17 @@ class KafkaClient(object):
 
         self.consumer.commit(offset_and_metadata)
 
-    def _get_messages(self, num_messages_to_consume, dir_path, file_name):
+    def _get_messages(self, num_messages_to_consume):
         messages = []
         while len(messages) < num_messages_to_consume:
             record = next(self.consumer)
             line = (record.key, record.value)
             messages.append(line)
-
         self.consumer.commit()
 
+        return messages
+
+    def _write_to_file(self, messages, dir_path, file_path):
         file_path = path.join(dir_path, file_name)
 
         df = pd.DataFrame(messages)
@@ -194,37 +205,20 @@ class KafkaClient(object):
         remaining_messages = num_messages_available
         num_dumped_messages = 0
         timestamp = int(time.time())
+        file_name_base = '{:011d}-{:015d}.parquet'
         while remaining_messages > 0:
             batch_size = min(remaining_messages, max_package_size_in_msgs)
             logger.debug('Fetching batch with size=<{}>'.format(batch_size))
-            file_name = (
-                '{:011d}'.format(timestamp)
-                + '-'
-                + '{:015d}'.format(num_dumped_messages)
-                + '.parquet')
-            self._get_messages(
-                num_messages_to_consume=batch_size,
-                dir_path=dir_path,
-                file_name=file_name)
-            self._send_dump_file(
-                dir_path=dir_path,
-                file_name=file_name,
-                bucket_name=bucket_name,
-                s3_client=s3_client)
+            file_name = file_name_base.format(timestamp, num_dumped_messages)
+            messages = self._get_messages(num_messages_to_consume=batch_size)
+            self._write_to_file(messages=messages, dir_path=dir_path,
+                                file_name=file_name)
+            self._send_dump_file(dir_path=dir_path, file_name=file_name,
+                                 bucket_name=bucket_name, s3_client=s3_client)
             remaining_messages -= batch_size
             num_dumped_messages += batch_size
 
         logger.info('Dump done!')
-
-
-    def _print_offsets(self):
-        _, _, end_offsets = self._get_offsets()
-
-        print('TOPIC_NAME \t PARTITION \t\t OFFSET')
-
-        msg = '{:10s} \t {:9d} \t {:14d}'
-        for partition, offset in end_offsets.items():
-            print(msg.format(partition.topic, partition.partition, offset))
 
     def _get_file_names(self, bucket_name, dump_prefix, s3_client):
         paginator = s3_client.get_paginator('list_objects_v2')
@@ -248,36 +242,88 @@ class KafkaClient(object):
                 file_names = [(f['Key'], f['Size'])
                               for f in response['Contents']]
         file_names.sort()
-        return file_names
+        return dump_prefix, file_names
+
+    def _set_test_topic(self, test_id):
+        _, _, end_offsets = self._get_offsets()
+
+        if not end_offsets:
+            msg = 'Can not find offsets for topic <{}>'
+            raise Exception(msg.format(self.topic))
+
+        test_offsets = {}
+
+        for partition, offset in end_offsets.items():
+            test_offsets[partition.partition] = offset
+
+        test_state = {
+            'test_id': test_id,
+            'topic_name': self.topic,
+            'offsets': test_offsets}
+
+        future = self.producer.send(
+            topic=self.dump_state_topic,
+            key=test_id,
+            value=json.dumps(test_state))
+        future.get(timeout=self.timeout)
+        logger.info('State saved')
+
+    def _get_test_state(self, test_id):
+        beginning_offsets, _, end_offsets = (
+            self._get_offsets(topic=self.dump_state_topic))
+        if beginning_offsets:
+            offsets, num_messages_available = self._calculate_offsets(
+                beginning_offsets=beginning_offsets,
+                end_offsets=end_offsets,
+                num_messages_to_consume=1)
+            self._set_offsets(offsets)
+            self.consumer.subscribe(self.dump_state_topic)
+            for message in self._get_messages(num_messages_available):
+                state = json.loads(message[1].decode())
+                if  state.get('topic_name', '') == self.topic and \
+                    state.get('test_id', '') == test_id:
+                    return state.get('offsets', None)
+            return None
 
     def reload_kafka_server(self, bucket_name, dir_path, dump_prefix=None):
 
-        self._print_offsets()
-
         s3_client = boto3.client('s3')
 
-        file_names = self._get_file_names(
+        test_id, file_names = self._get_file_names(
             bucket_name=bucket_name,
             dump_prefix=dump_prefix,
             s3_client=s3_client)
 
-        for file_name, file_size in file_names:
-            file_path = path.join(dir_path, '{}.tmp'.format(file_name))
-            s3_client.download_file(
-                Bucket=bucket_name,
-                Filename=file_path,
-                Key=file_name,
-                Callback=ProgressPercentage(
-                    '{}.tmp'.format(file_name),
-                    file_size))
-            table = pq.read_table(file_path)
-            df = table.to_pandas()
-            for row in df.itertuples():
-                future = self.producer.send(self.topic, key=row[1],
-                                            value=row[2])
-                future.get(timeout=1)
-            logger.debug('File <{}> reloaded to kafka'.format(file_path))
-            remove(file_path)
+        dump_offsets = self._get_test_state(test_id)
+
+        if dump_offsets is None:
+            self._set_test_topic(test_id)
+
+            for file_name, file_size in file_names:
+                file_path = path.join(dir_path, '{}.tmp'.format(file_name))
+                s3_client.download_file(
+                    Bucket=bucket_name,
+                    Filename=file_path,
+                    Key=file_name,
+                    Callback=ProgressPercentage(
+                        '{}.tmp'.format(file_name),
+                        file_size))
+                table = pq.read_table(file_path)
+                df = table.to_pandas()
+                for row in df.itertuples():
+                    future = self.producer.send(self.topic, key=row[1],
+                                                value=row[2])
+                    future.get(timeout=self.timeout)
+                logger.debug('File <{}> reloaded to kafka'.format(file_path))
+                remove(file_path)
+        else:
+            logger.info('Messages already uploaded. Just resetting offsets')
+            partitions = self._get_partitions(self.topic)
+            offsets = {}
+            for partition in partitions:
+                offsets[partition] = dump_offsets[str(partition.partition)]
+            self._set_offsets(offsets)
+            logger.debug('Should reset offsets to {}'.format(offsets))
 
         logger.info('Reload done!')
 
