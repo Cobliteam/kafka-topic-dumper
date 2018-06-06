@@ -85,26 +85,24 @@ def main():
     group_id = 'kafka_topic_dumper'
     topic = opts.topic
 
-    kafka_client = KafkaClient(
-        topic=topic,
-        group_id=group_id,
-        bootstrap_servers=bootstrap_servers)
+    with KafkaClient(topic=topic, group_id=group_id,
+                     bootstrap_servers=bootstrap_servers) as kafka_client:
 
-    if opts.action == 'dump':
-        num_messages_to_consume = opts.num_messages
-        max_messages_per_package = opts.max_messages_per_package
-        dry_run = opts.dry_run
+        if opts.action == 'dump':
+            num_messages_to_consume = opts.num_messages
+            max_messages_per_package = opts.max_messages_per_package
+            dry_run = opts.dry_run
 
-        kafka_client.get_messages(
-            num_messages_to_consume=num_messages_to_consume,
-            max_package_size_in_msgs=max_messages_per_package,
-            dir_path=dir_path_to_save_files,
-            bucket_name=bucket_name,
-            dry_run=dry_run)
+            kafka_client.get_messages(
+                num_messages_to_consume=num_messages_to_consume,
+                max_package_size_in_msgs=max_messages_per_package,
+                dir_path=dir_path_to_save_files,
+                bucket_name=bucket_name,
+                dry_run=dry_run)
 
-    elif opts.action == 'reload':
-        prefix = opts.prefix
-        kafka_client.reload_kafka_server(
-            bucket_name=bucket_name,
-            dir_path=dir_path_to_save_files,
-            dump_prefix=prefix)
+        elif opts.action == 'reload':
+            prefix = opts.prefix
+            kafka_client.reload_kafka_server(
+                bucket_name=bucket_name,
+                dir_path=dir_path_to_save_files,
+                dump_prefix=prefix)

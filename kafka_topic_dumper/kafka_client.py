@@ -40,6 +40,7 @@ class KafkaClient(object):
         if self.consumer is not None:
             return
         try:
+            logger.info('Starting consumer')
             self.consumer = KafkaConsumer(
                 bootstrap_servers=self.bootstrap_servers,
                 group_id=self.group_id,
@@ -49,15 +50,11 @@ class KafkaClient(object):
             logger.exception(msg.format(err))
             raise err
 
-    def _close_consumer(self):
-        logger.info("Closing consumer")
-        self.consumer.close()
-        self.consumer = None
-
     def _get_producer(self):
         if self.producer is not None:
             return
         try:
+            logger.info('Starting producer')
             self.producer = KafkaProducer(
                 bootstrap_servers=self.bootstrap_servers,
                 key_serializer=bytes_serializer,
@@ -66,6 +63,15 @@ class KafkaClient(object):
             msg = 'Can not create KafkaProducer instance. Reason=<{}>'
             logger.exception(msg.format(err))
             raise err
+
+    def open(self):
+        self._get_consumer()
+        self._get_producer()
+
+    def _close_consumer(self):
+        logger.info("Closing consumer")
+        self.consumer.close()
+        self.consumer = None
 
     def _close_producer(self):
         logger.info("Closing producer")
@@ -76,6 +82,10 @@ class KafkaClient(object):
 
     def _get_offsets(self):
         partitions = self.consumer.partitions_for_topic(self.topic)
+    def close(self):
+        self._close_consumer()
+        self._close_producer()
+
         msg = "Got the following partitions=<{}> for topic=<{}>"
         logger.info(msg.format(partitions, self.topic))
 
@@ -162,7 +172,6 @@ class KafkaClient(object):
         logger.debug(msg.format(num_messages_to_consume,
                      max_package_size_in_msgs))
 
-        self._get_consumer()
         beginning_offsets, commited_offsets, end_offsets = self._get_offsets()
 
         offsets, num_messages_available = self._calculate_offsets(
@@ -207,14 +216,9 @@ class KafkaClient(object):
 
         logger.info('Dump done!')
 
-        self._close_consumer()
 
     def _print_offsets(self):
-        try:
-            self._get_consumer()
-            _, _, end_offsets = self._get_offsets()
-        finally:
-            self._close_consumer()
+        _, _, end_offsets = self._get_offsets()
 
         print('TOPIC_NAME \t PARTITION \t\t OFFSET')
 
@@ -257,27 +261,29 @@ class KafkaClient(object):
             dump_prefix=dump_prefix,
             s3_client=s3_client)
 
-        try:
-            self._get_producer()
-
-            for file_name, file_size in file_names:
-                file_path = path.join(dir_path, '{}.tmp'.format(file_name))
-                s3_client.download_file(
-                    Bucket=bucket_name,
-                    Filename=file_path,
-                    Key=file_name,
-                    Callback=ProgressPercentage(
-                        '{}.tmp'.format(file_name),
-                        file_size))
-                table = pq.read_table(file_path)
-                df = table.to_pandas()
-                for row in df.itertuples():
-                    future = self.producer.send(self.topic, key=row[1],
-                                                value=row[2])
-                    future.get(timeout=1)
-                logger.debug('File <{}> reloaded to kafka'.format(file_path))
-                remove(file_path)
-        finally:
-            self._close_producer()
+        for file_name, file_size in file_names:
+            file_path = path.join(dir_path, '{}.tmp'.format(file_name))
+            s3_client.download_file(
+                Bucket=bucket_name,
+                Filename=file_path,
+                Key=file_name,
+                Callback=ProgressPercentage(
+                    '{}.tmp'.format(file_name),
+                    file_size))
+            table = pq.read_table(file_path)
+            df = table.to_pandas()
+            for row in df.itertuples():
+                future = self.producer.send(self.topic, key=row[1],
+                                            value=row[2])
+                future.get(timeout=1)
+            logger.debug('File <{}> reloaded to kafka'.format(file_path))
+            remove(file_path)
 
         logger.info('Reload done!')
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
