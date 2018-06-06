@@ -32,11 +32,17 @@ export AWS_PROFILE=name
 ```
 $kafka-topic-dumper -h
 usage: kafka-topic-dumper [-h] [-t TOPIC] [-s BOOTSTRAP_SERVERS]
-                          [-n NUM_MESSAGES] [-p PATH]
-                          [-m MAX_MESSAGES_PER_PACKAGE] [-d] [-b BUCKET_NAME]
-                          [-x PREFIX] [-l]
+                          [-b BUCKET_NAME]
+                          {dump,reload} ...
 
 Simple tool to dump kafka messages and send it to AWS S3
+
+positional arguments:
+  {dump,reload}         sub-command help
+    dump                Dump mode will fetch messages from kafka cluster and
+                        send then to AWS-S3.
+    reload              Reload mode will download files from AWS-S3 and send
+                        then to kafka.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -47,23 +53,8 @@ optional arguments:
                         that the consumer should contact to bootstrap initial
                         cluster metadata. If no servers are specified, will
                         default to localhost:9092.
-  -n NUM_MESSAGES, --num-messages NUM_MESSAGES
-                        Number of messages to try dump.
-  -p PATH, --path PATH  Path to folder where storage local dump files.
-  -m MAX_MESSAGES_PER_PACKAGE, --max-messages-per-package MAX_MESSAGES_PER_PACKAGE
-                        Maximum number of messages per dump file.
-  -d, --dry-run         In dry run mode, kafka-topic-dumper will generate
-                        local files. But will not send it to AWS S3 bucket.
   -b BUCKET_NAME, --bucket-name BUCKET_NAME
                         The AWS-S3 bucket name to send dump files.
-  -x PREFIX, --prefix PREFIX
-                        The prefix of files to be downloaded from AWS-S3. this
-                        option is only used in reload mode(option -d). If no
-                        value is passed, the program assumes that files are
-                        named in the form TIMESTAMP-*.parquet and the gratest
-                        timestamp will be used.
-  -l, --reload          Reload mode will download files from kafka and send it
-                        to kafka
 ```
 
 ## Basic example
