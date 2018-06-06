@@ -1,6 +1,7 @@
 import argparse
 import logging
 import tempfile
+import sys
 
 from kafka_topic_dumper.kafka_client import KafkaClient
 
@@ -66,6 +67,10 @@ def parse_command_line():
     reload_cmd.set_defaults(action='reload')
 
     opts = parser.parse_args()
+
+    if getattr(opts, 'action', None) is None:
+        parser.print_help()
+        sys.exit(1)
 
     print(opts)
 
