@@ -1,7 +1,8 @@
 import logging
 import time
-from math import ceil
 import json
+import re
+from math import ceil
 from os import path, remove
 
 import boto3
@@ -38,6 +39,7 @@ class KafkaClient(object):
         self.producer = None
         self.timeout = 1
         self.dump_state_topic = 'kafka-topic-dumper'
+        self.s3_path = 'kafka-topic-dumper-data/'
 
     def _get_consumer(self):
         if self.consumer is not None:
@@ -154,7 +156,7 @@ class KafkaClient(object):
 
         return messages
 
-    def _write_to_file(self, messages, dir_path, file_path):
+    def _write_to_file(self, messages, dir_path, file_name):
         file_path = path.join(dir_path, file_name)
 
         df = pd.DataFrame(messages)
@@ -164,6 +166,7 @@ class KafkaClient(object):
     def _send_dump_file(self, dir_path, file_name, bucket_name, s3_client):
         if s3_client:
             file_path = path.join(dir_path, file_name)
+            file_name = self.s3_path + file_name
             logger.info('Sending file <{}> to s3'.format(file_name))
             s3_client.upload_file(
                 file_path,
@@ -224,18 +227,32 @@ class KafkaClient(object):
         paginator = s3_client.get_paginator('list_objects_v2')
 
         if dump_prefix is None:
+            prefix = self.s3_path
+            sufix = '-'
+            reg = re.compile('^{}(.*){}$'.format(prefix, sufix))
+
             response_iterator = paginator.paginate(Bucket=bucket_name,
+                                                   Prefix=prefix,
                                                    Delimiter='-')
+            def striper(string):
+                match = reg.match(string['Prefix'])
+                if match is not None:
+                    return match.group(1)
+
             prefixes = []
             for response in response_iterator:
-                response_prefixes = [p['Prefix'].replace('-', '')
-                                     for p in response['CommonPrefixes']]
+                response_prefixes = filter(
+                    lambda x: x is not None,
+                    map(striper, response['CommonPrefixes']))
                 prefixes += response_prefixes
+
             dump_prefix = max(prefixes)
             logger.info('Prefix chosen was <{}>'.format(dump_prefix))
 
+        dump_path = prefix + dump_prefix
+
         response_iterator = paginator.paginate(Bucket=bucket_name,
-                                               Prefix=dump_prefix)
+                                               Prefix=dump_path)
         file_names = []
         for response in response_iterator:
             if response['KeyCount'] > 0:
@@ -300,7 +317,8 @@ class KafkaClient(object):
             self._set_test_topic(test_id)
 
             for file_name, file_size in file_names:
-                file_path = path.join(dir_path, '{}.tmp'.format(file_name))
+                file_path = path.join(
+                    dir_path, '{}.tmp'.format(path.basename(file_name)))
                 s3_client.download_file(
                     Bucket=bucket_name,
                     Filename=file_path,
