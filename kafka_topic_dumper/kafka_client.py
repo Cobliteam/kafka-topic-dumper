@@ -261,7 +261,7 @@ class KafkaClient(object):
         file_names.sort()
         return dump_prefix, file_names
 
-    def _set_test_topic(self, test_id):
+    def _save_state(self, test_id):
         _, _, end_offsets = self._get_offsets()
 
         if not end_offsets:
@@ -285,7 +285,7 @@ class KafkaClient(object):
         future.get(timeout=self.timeout)
         logger.info('State saved')
 
-    def _get_test_state(self, test_id):
+    def _get_state(self, test_id):
         beginning_offsets, _, end_offsets = (
             self._get_offsets(topic=self.dump_state_topic))
         if beginning_offsets:
@@ -311,10 +311,10 @@ class KafkaClient(object):
             dump_prefix=dump_prefix,
             s3_client=s3_client)
 
-        dump_offsets = self._get_test_state(test_id)
+        dump_offsets = self._get_state(test_id)
 
         if dump_offsets is None:
-            self._set_test_topic(test_id)
+            self._save_state(test_id)
 
             for file_name, file_size in file_names:
                 file_path = path.join(
