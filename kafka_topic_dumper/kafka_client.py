@@ -297,7 +297,7 @@ class KafkaClient(object):
             self.consumer.subscribe(self.dump_state_topic)
             for message in self._get_messages(num_messages_available):
                 state = json.loads(message[1].decode())
-                if  state.get('topic_name', '') == self.topic and \
+                if state.get('topic_name', '') == self.topic and \
                     state.get('test_id', '') == test_id:
                     return state.get('offsets', None)
             return None
@@ -341,7 +341,7 @@ class KafkaClient(object):
             for partition in partitions:
                 offsets[partition] = dump_offsets[str(partition.partition)]
             self._set_offsets(offsets)
-            logger.debug('Should reset offsets to {}'.format(offsets))
+            logger.debug('Will reset offsets to <{}>'.format(offsets))
 
         logger.info('Reload done!')
 
