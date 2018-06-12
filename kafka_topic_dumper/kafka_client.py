@@ -269,6 +269,10 @@ class KafkaClient(object):
                                   for f in response['Contents'])
         file_names.sort()
 
+        if len(file_names) == 0:
+            msg = 'Can not found files for this dump id <{}>'
+            logger.error(msg.format(dump_id))
+            raise Exception('EmptyS3Response')
 
         return file_names
 
