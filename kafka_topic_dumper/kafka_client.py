@@ -40,6 +40,7 @@ class KafkaClient(object):
         self.timeout = 1
         self.dump_state_topic = 'kafka-topic-dumper'
         self.s3_path = 'kafka-topic-dumper-data/'
+        self.s3_client = None
 
     def _get_consumer(self):
         if self.consumer is not None:
@@ -54,6 +55,11 @@ class KafkaClient(object):
             msg = 'Can not create KafkaConsumer instance. Reason=<{}>'
             logger.exception(msg.format(err))
             raise err
+
+    def _get_s3_client(self):
+        if self.s3_client is None:
+            self.s3_client = boto3.client('s3')
+        return self.s3_client
 
     def _get_producer(self):
         if self.producer is not None:
@@ -203,7 +209,7 @@ class KafkaClient(object):
 
         s3_client = None
         if not dry_run:
-            s3_client = boto3.client('s3')
+            s3_client = self._get_s3_client()
 
         remaining_messages = num_messages_available
         num_dumped_messages = 0
@@ -303,18 +309,20 @@ class KafkaClient(object):
             return None
 
     def reload_kafka_server(self, bucket_name, dir_path, dump_prefix=None):
+        test_id = dump_prefix
 
-        s3_client = boto3.client('s3')
-
-        test_id, file_names = self._get_file_names(
-            bucket_name=bucket_name,
-            dump_prefix=dump_prefix,
-            s3_client=s3_client)
+        if test_id is None:
+            s3_client = self._get_s3_client()
+            test_id, file_names = self._get_file_names(
+                bucket_name=bucket_name,
+                dump_prefix=dump_prefix,
+                s3_client=s3_client)
 
         dump_offsets = self._get_state(test_id)
 
         if dump_offsets is None:
             self._save_state(test_id)
+            s3_client = self._get_s3_client()
 
             for file_name, file_size in file_names:
                 file_path = path.join(
