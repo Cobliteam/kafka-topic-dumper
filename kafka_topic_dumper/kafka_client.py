@@ -3,7 +3,8 @@ import time
 import json
 import re
 from math import ceil
-from os import path, remove
+from os import makedirs, path, remove
+from uuid import uuid4
 
 import boto3
 
@@ -162,35 +163,35 @@ class KafkaClient(object):
 
         return messages
 
-    def _write_to_file(self, messages, dir_path, file_name):
-        file_path = path.join(dir_path, file_name)
-
+    def _write_messages_to_file(self, messages, local_path):
         df = pd.DataFrame(messages)
         table = pa.Table.from_pandas(df)
-        pq.write_table(table, file_path, compression='gzip')
+        pq.write_table(table, local_path, compression='gzip')
 
-    def _send_dump_file(self, dir_path, file_name, bucket_name, s3_client):
-        if s3_client:
-            file_path = path.join(dir_path, file_name)
-            file_name = self.s3_path + file_name
-            logger.info('Sending file <{}> to s3'.format(file_name))
-            s3_client.upload_file(
-                file_path,
-                bucket_name,
-                file_name,
-                ExtraArgs={'ACL': 'private'},
-                Callback=ProgressPercentage(file_path))
-            logger.debug('Deleting file <{}>'.format(file_name))
-            remove(file_path)
+    def _send_dump_file(self, local_path, bucket_name, dump_id):
+        file_name = path.basename(local_path)
+        s3_path = path.join(self.s3_path, dump_id, file_name)
+
+        logger.info('Sending file <{}> to s3'.format(file_name))
+        s3_client = self._get_s3_client()
+        s3_client.upload_file(
+            local_path,
+            bucket_name,
+            s3_path,
+            ExtraArgs={'ACL': 'private'},
+            Callback=ProgressPercentage(local_path))
+
+        logger.debug('Deleting file <{}>'.format(file_name))
+        remove(local_path)
 
     def get_messages(self, num_messages_to_consume, max_package_size_in_msgs,
-                     dir_path, bucket_name, dry_run):
+                     local_dir, bucket_name, dry_run, dump_id):
 
         # set offsets
         msg = ('Will ask kafka for <{}> messages ' +
                'and save it in files with <{}> messages')
         logger.debug(msg.format(num_messages_to_consume,
-                     max_package_size_in_msgs))
+                                max_package_size_in_msgs))
 
         beginning_offsets, commited_offsets, end_offsets = self._get_offsets()
 
@@ -207,67 +208,71 @@ class KafkaClient(object):
         msg = 'Trying to dump <{}> messages'
         logger.info(msg.format(num_messages_available))
 
-        s3_client = None
-        if not dry_run:
-            s3_client = self._get_s3_client()
-
         remaining_messages = num_messages_available
         num_dumped_messages = 0
-        timestamp = int(time.time())
-        file_name_base = '{:011d}-{:015d}.parquet'
+
+        dump_dir = path.join(local_dir, dump_id)
+        makedirs(dump_dir, exist_ok=True)
+        logger.debug('Dump directory <{}> created'.format(dump_dir))
+
         while remaining_messages > 0:
             batch_size = min(remaining_messages, max_package_size_in_msgs)
             logger.debug('Fetching batch with size=<{}>'.format(batch_size))
-            file_name = file_name_base.format(timestamp, num_dumped_messages)
+
+            file_name = '{}-{:015d}.parquet'.format(
+                dump_id, num_dumped_messages)
+
+            local_path = path.join(local_dir, dump_id, file_name)
+
             messages = self._get_messages(num_messages_to_consume=batch_size)
-            self._write_to_file(messages=messages, dir_path=dir_path,
-                                file_name=file_name)
-            self._send_dump_file(dir_path=dir_path, file_name=file_name,
-                                 bucket_name=bucket_name, s3_client=s3_client)
+            self._write_messages_to_file(messages=messages,
+                                         local_path=local_path)
+            if not dry_run:
+                self._send_dump_file(local_path=local_path,
+                                     bucket_name=bucket_name,
+                                     dump_id=dump_id)
             remaining_messages -= batch_size
             num_dumped_messages += batch_size
 
         logger.info('Dump done!')
 
-    def _get_file_names(self, bucket_name, dump_prefix, s3_client):
-        paginator = s3_client.get_paginator('list_objects_v2')
+    def find_latest_dump_id(self, bucket_name):
+        paginator = self._get_s3_client().get_paginator('list_objects_v2')
 
-        if dump_prefix is None:
-            prefix = self.s3_path
-            sufix = '-'
-            reg = re.compile('^{}(.*){}$'.format(prefix, sufix))
+        prefix = self.s3_path.rstrip('/') + '/'
 
-            response_iterator = paginator.paginate(Bucket=bucket_name,
-                                                   Prefix=prefix,
-                                                   Delimiter='-')
-            def striper(string):
-                match = reg.match(string['Prefix'])
-                if match is not None:
-                    return match.group(1)
+        response_iterator = paginator.paginate(Bucket=bucket_name,
+                                               Prefix=prefix,
+                                               Delimiter='/')
+        def strip(r):
+            return r['Prefix'][len(prefix):].rstrip('/')
 
-            prefixes = []
-            for response in response_iterator:
-                response_prefixes = filter(
-                    lambda x: x is not None,
-                    map(striper, response['CommonPrefixes']))
-                prefixes += response_prefixes
+        prefixes = []
+        for response in response_iterator:
+            prefixes.extend(map(strip, response['CommonPrefixes']))
 
-            dump_prefix = max(prefixes)
-            logger.info('Prefix chosen was <{}>'.format(dump_prefix))
+        dump_id = max(prefixes)
+        logger.debug('Prefix chosen was <{}>'.format(dump_id))
 
-        dump_path = prefix + dump_prefix
+        return dump_id
+
+    def _get_file_names(self, bucket_name, dump_id):
+        paginator = self._get_s3_client().get_paginator('list_objects_v2')
+        dump_path = path.join(self.s3_path, dump_id) + '/'
 
         response_iterator = paginator.paginate(Bucket=bucket_name,
                                                Prefix=dump_path)
         file_names = []
         for response in response_iterator:
             if response['KeyCount'] > 0:
-                file_names = [(f['Key'], f['Size'])
-                              for f in response['Contents']]
+                file_names.extend((f['Key'], f['Size'])
+                                  for f in response['Contents'])
         file_names.sort()
-        return dump_prefix, file_names
 
-    def _save_state(self, test_id):
+
+        return file_names
+
+    def _save_state(self, dump_id):
         _, _, end_offsets = self._get_offsets()
 
         if not end_offsets:
@@ -280,20 +285,22 @@ class KafkaClient(object):
             test_offsets[partition.partition] = offset
 
         test_state = {
-            'test_id': test_id,
+            'dump_id': dump_id,
             'topic_name': self.topic,
-            'offsets': test_offsets}
+            'offsets': test_offsets,
+            'dump_date': int(time.time())}
 
         future = self.producer.send(
             topic=self.dump_state_topic,
-            key=test_id,
+            key=self.topic,
             value=json.dumps(test_state))
         future.get(timeout=self.timeout)
         logger.info('State saved')
 
-    def _get_state(self, test_id):
+    def _get_last_state_message(self, dump_id):
         beginning_offsets, _, end_offsets = (
             self._get_offsets(topic=self.dump_state_topic))
+
         if beginning_offsets:
             offsets, num_messages_available = self._calculate_offsets(
                 beginning_offsets=beginning_offsets,
@@ -301,39 +308,47 @@ class KafkaClient(object):
                 num_messages_to_consume=1)
             self._set_offsets(offsets)
             self.consumer.subscribe(self.dump_state_topic)
-            for message in self._get_messages(num_messages_available):
-                state = json.loads(message[1].decode())
-                if state.get('topic_name', '') == self.topic and \
-                    state.get('test_id', '') == test_id:
-                    return state.get('offsets', None)
-            return None
+            messages = [json.loads(m.decode()) for _, m in
+                        self._get_messages(num_messages_available)]
+            if messages:
+                last_state_message = max(messages,
+                                         key=lambda m: m['dump_date'])
+                return last_state_message
 
-    def reload_kafka_server(self, bucket_name, dir_path, dump_prefix=None):
-        test_id = dump_prefix
+        return None
 
-        if test_id is None:
-            s3_client = self._get_s3_client()
-            test_id, file_names = self._get_file_names(
-                bucket_name=bucket_name,
-                dump_prefix=dump_prefix,
-                s3_client=s3_client)
+    def _get_state(self, dump_id):
+        state_message = self._get_last_state_message(dump_id)
+        if state_message and \
+           state_message['topic_name'] == self.topic and \
+           state_message['dump_id'] == dump_id:
+                return state_message['offsets']
+        return None
 
-        dump_offsets = self._get_state(test_id)
+    def _reset_offsets(self, dump_offsets):
+        logger.info('Messages already uploaded. Just resetting offsets')
+        partitions = self._get_partitions(self.topic)
+        offsets = {}
 
-        if dump_offsets is None:
-            self._save_state(test_id)
-            s3_client = self._get_s3_client()
+        for partition in partitions:
+            offsets[partition] = dump_offsets[str(partition.partition)]
 
-            for file_name, file_size in file_names:
-                file_path = path.join(
-                    dir_path, '{}.tmp'.format(path.basename(file_name)))
-                s3_client.download_file(
-                    Bucket=bucket_name,
-                    Filename=file_path,
-                    Key=file_name,
-                    Callback=ProgressPercentage(
-                        '{}.tmp'.format(file_name),
-                        file_size))
+        logger.debug('Will reset offsets to <{}>'.format(offsets))
+
+        self._set_offsets(offsets)
+
+    def _load_dump(self, bucket_name, dump_id, download_dir, files):
+        s3_client = self._get_s3_client()
+
+        for file_name, file_size in files:
+            tmp_name = '{}.tmp'.format(path.basename(file_name))
+            file_path = path.join(download_dir, tmp_name)
+            s3_client.download_file(
+                Bucket=bucket_name,
+                Filename=file_path,
+                Key=file_name,
+                Callback=ProgressPercentage(tmp_name, file_size))
+            try:
                 table = pq.read_table(file_path)
                 df = table.to_pandas()
                 for row in df.itertuples():
@@ -341,15 +356,20 @@ class KafkaClient(object):
                                                 value=row[2])
                     future.get(timeout=self.timeout)
                 logger.debug('File <{}> reloaded to kafka'.format(file_path))
+            finally:
                 remove(file_path)
+        self._save_state(dump_id)
+
+    def reload_kafka_server(self, bucket_name, local_dir, dump_id):
+        dump_offsets = self._get_state(dump_id)
+
+        if dump_offsets:
+            self._reset_offsets(dump_offsets=dump_offsets)
         else:
-            logger.info('Messages already uploaded. Just resetting offsets')
-            partitions = self._get_partitions(self.topic)
-            offsets = {}
-            for partition in partitions:
-                offsets[partition] = dump_offsets[str(partition.partition)]
-            self._set_offsets(offsets)
-            logger.debug('Will reset offsets to <{}>'.format(offsets))
+            files = self._get_file_names(bucket_name=bucket_name,
+                                         dump_id=dump_id)
+            self._load_dump(bucket_name=bucket_name, dump_id=dump_id,
+                            download_dir=local_dir, files=files)
 
         logger.info('Reload done!')
 
