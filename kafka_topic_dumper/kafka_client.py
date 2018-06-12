@@ -281,28 +281,31 @@ class KafkaClient(object):
 
         return file_names
 
-    def _save_state(self, dump_id):
+    def _gen_state(self, dump_id):
         _, _, end_offsets = self._get_offsets()
 
         if not end_offsets:
             msg = 'Can not find offsets for topic <{}>'
             raise Exception(msg.format(self.topic))
 
-        test_offsets = {}
+        state_offsets = {}
 
         for partition, offset in end_offsets.items():
-            test_offsets[partition.partition] = offset
+            state_offsets[partition.partition] = offset
 
-        test_state = {
+        state = {
             'dump_id': dump_id,
             'topic_name': self.topic,
-            'offsets': test_offsets,
+            'offsets': state_offsets,
             'dump_date': int(time.time())}
 
+        return state
+
+    def _save_state(self, state):
         future = self.producer.send(
             topic=self.dump_state_topic,
             key=self.topic,
-            value=json.dumps(test_state))
+            value=json.dumps(state))
         future.get(timeout=self.timeout)
         logger.info('State saved')
 
@@ -350,6 +353,8 @@ class KafkaClient(object):
     def _load_dump(self, bucket_name, dump_id, download_dir, files):
         s3_client = self._get_s3_client()
 
+        state = self._gen_state(dump_id)
+
         for file_name, file_size in files:
             tmp_name = '{}.tmp'.format(path.basename(file_name))
             file_path = path.join(download_dir, tmp_name)
@@ -368,7 +373,8 @@ class KafkaClient(object):
                 logger.debug('File <{}> reloaded to kafka'.format(file_path))
             finally:
                 remove(file_path)
-        self._save_state(dump_id)
+
+        self._save_state(state)
 
     def reload_kafka_server(self, bucket_name, local_dir, dump_id):
         dump_offsets = self._get_state(dump_id)
