@@ -32,7 +32,7 @@ export AWS_PROFILE=name
 ```
 $kafka-topic-dumper -h
 usage: kafka-topic-dumper [-h] [-t TOPIC] [-s BOOTSTRAP_SERVERS]
-                          [-b BUCKET_NAME]
+                          [-b BUCKET_NAME] [-p PATH]
                           {dump,reload} ...
 
 Simple tool to dump kafka messages and send it to AWS S3
@@ -55,6 +55,7 @@ optional arguments:
                         default to localhost:9092.
   -b BUCKET_NAME, --bucket-name BUCKET_NAME
                         The AWS-S3 bucket name to send dump files.
+  -p PATH, --path PATH  Path to folder where to store local files.
 ```
 
 ## Basic example
