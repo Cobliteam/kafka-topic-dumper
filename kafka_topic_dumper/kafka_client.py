@@ -32,8 +32,13 @@ def bytes_serializer(value):
 
 
 class KafkaClient(object):
-    def __init__(self, group_id, bootstrap_servers, topic):
-        self.group_id = group_id
+    def __init__(self, bootstrap_servers, topic, group_id=None):
+        if group_id is not None:
+            self.group_id = group_id
+            self.allow_hotreload = True
+        else:
+            self.group_id = 'kafka_topic_dumper_{}'.format(uuid4())
+            self.allow_hotreload = False
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
         self.consumer = None
@@ -322,11 +327,12 @@ class KafkaClient(object):
         return None
 
     def _get_state(self, dump_id):
-        state_message = self._get_last_state_message(dump_id)
-        if state_message and \
-           state_message['topic_name'] == self.topic and \
-           state_message['dump_id'] == dump_id:
-                return state_message['offsets']
+        if self.allow_hotreload:
+            state_message = self._get_last_state_message(dump_id)
+            if state_message and \
+               state_message['topic_name'] == self.topic and \
+               state_message['dump_id'] == dump_id:
+                    return state_message['offsets']
         return None
 
     def _reset_offsets(self, dump_offsets):

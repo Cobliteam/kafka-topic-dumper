@@ -59,6 +59,12 @@ def parse_command_line():
                                  help='Reload mode will download files from '
                                       'AWS-S3 and send then to kafka.')
 
+    reload_cmd.add_argument('-g', '--reload-consumer-group',
+                            default=None,
+                            help='Whe reloading a dump of messages that '
+                                 'already was in kafka, kafka-topic-dumper '
+                                 'will not load it again, it will only reset '
+                                 'offsets for this consumer-group.')
 
     reload_cmd.set_defaults(action='reload')
 
@@ -82,7 +88,7 @@ def main():
 
     bootstrap_servers = opts.bootstrap_servers
     bucket_name = opts.bucket_name
-    group_id = 'kafka_topic_dumper'
+    group_id = getattr(opts, 'reload_consumer_group', None)
     topic = opts.topic
     dump_id = opts.prefix
 
