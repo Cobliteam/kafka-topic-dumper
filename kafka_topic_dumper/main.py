@@ -1,5 +1,8 @@
 import argparse
 import logging
+import tempfile
+import sys
+from datetime import datetime
 
 from kafka_topic_dumper.kafka_client import KafkaClient
 
@@ -9,10 +12,11 @@ logger.setLevel(logging.INFO)
 
 
 def parse_command_line():
-    parser = argparse.ArgumentParser(
-        description='Simple tool to dump kafka messages and send it to AWS S3')
+    parser = argparse.ArgumentParser(description='Simple tool to dump kafka '
+                                                 'messages and send it to AWS '
+                                                 'S3')
 
-    parser.add_argument('-t', '--topic', default='kafka-topic-dumper',
+    parser.add_argument('-t', '--topic', default='test',
                         help='Kafka topic to fetch messages from.')
 
     parser.add_argument('-s', '--bootstrap-servers', default='localhost:9092',
@@ -22,37 +26,55 @@ def parse_command_line():
                              'servers are specified, will default to '
                              'localhost:9092.')
 
-    parser.add_argument('-n', '--num-messages', default=300, type=int,
-                        help='Number of messages to try dump.')
-
-    parser.add_argument('-p', '--path', default='./data',
-                        help='Path to folder where storage local dump files.')
-
-    parser.add_argument('-m', '--max-messages-per-package', default=100,
-                        type=int,
-                        help='Maximum number of messages per dump file.')
-
-    parser.add_argument('-d', '--dry-run', action='store_true',
-                        help='In dry run mode, kafka-topic-dumper will '
-                             'generate local files. But will not send it to '
-                             'AWS S3 bucket.')
-
     parser.add_argument('-b', '--bucket-name', default='kafka-topic-dumper',
                         help='The AWS-S3 bucket name to send dump files.')
 
-    parser.add_argument('-x', '--prefix', default=None,
-                        help='The prefix of files to be downloaded from '
-                             'AWS-S3. this option is only used in reload '
-                             'mode(option -d). If no value is passed, '
-                             'the program assumes that files are named in the '
-                             'form TIMESTAMP-*.parquet and the gratest '
-                             'timestamp will be used.')
+    parser.add_argument('-p', '--path', default=None,
+                        help='Path to folder where to store local files.')
 
-    parser.add_argument('-l', '--reload', action='store_true',
-                        help='Reload mode will download files from kafka and '
-                             'send it to kafka')
+    parser.add_argument('-x', '--prefix', default=None,
+                        help='The name of the folder to dump/reload.')
+
+    cmds = parser.add_subparsers(help='sub-command help')
+
+    dump_cmd = cmds.add_parser('dump',
+                               help='Dump mode will fetch messages from kafka '
+                                    'cluster and send then to AWS-S3.')
+
+    dump_cmd.add_argument('-n', '--num-messages', default=300, type=int,
+                          help='Number of messages to try dump.')
+
+    dump_cmd.add_argument('-m', '--max-messages-per-package', default=100,
+                          type=int,
+                          help='Maximum number of messages per dump file.')
+
+    dump_cmd.add_argument('-d', '--dry-run', action='store_true',
+                          help='In dry run mode, kafka-topic-dumper will '
+                               'generate local files. But will not send it to '
+                               'AWS S3 bucket.')
+
+    dump_cmd.set_defaults(action='dump')
+
+    reload_cmd = cmds.add_parser('reload',
+                                 help='Reload mode will download files from '
+                                      'AWS-S3 and send then to kafka.')
+
+    reload_cmd.add_argument('-g', '--reload-consumer-group',
+                            default=None,
+                            help='Whe reloading a dump of messages that '
+                                 'already was in kafka, kafka-topic-dumper '
+                                 'will not load it again, it will only reset '
+                                 'offsets for this consumer-group.')
+
+    reload_cmd.set_defaults(action='reload')
 
     opts = parser.parse_args()
+
+    if getattr(opts, 'action', None) is None:
+        parser.print_help()
+        sys.exit(1)
+
+    print(opts)
 
     return opts
 
@@ -64,32 +86,35 @@ def main():
 
     opts = parse_command_line()
 
-    topic = opts.topic
     bootstrap_servers = opts.bootstrap_servers
-    num_messages_to_consume = opts.num_messages
-    max_messages_per_package = opts.max_messages_per_package
-    dir_path_to_save_files = opts.path
-    dry_run = opts.dry_run
-    group_id = 'kafka_topic_dumper'
     bucket_name = opts.bucket_name
-    reload_mode = opts.reload
-    prefix = opts.prefix
+    group_id = getattr(opts, 'reload_consumer_group', None)
+    topic = opts.topic
+    dump_id = opts.prefix
 
-    kafka_client = KafkaClient(
-        topic=topic,
-        group_id=group_id,
-        bootstrap_servers=bootstrap_servers)
+    with KafkaClient(topic=topic, group_id=group_id,
+                     bootstrap_servers=bootstrap_servers) as kafka_client:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            local_dir = opts.path or tmp_dir
 
-    if reload_mode:
-        kafka_client.reload_kafka_server(
-            bucket_name=bucket_name,
-            dir_path=dir_path_to_save_files,
-            dump_prefix=prefix)
+            if opts.action == 'dump':
+                if not dump_id:
+                    dump_id = '{:%Y%m%d%H%M%S}'.format(datetime.utcnow())
+                    msg = 'Using autogenerated dump id <{}>'
+                    logger.info(msg.format(dump_id))
+                kafka_client.get_messages(
+                    num_messages_to_consume=opts.num_messages,
+                    max_package_size_in_msgs=opts.max_messages_per_package,
+                    local_dir=local_dir,
+                    bucket_name=bucket_name,
+                    dry_run=opts.dry_run,
+                    dump_id=dump_id)
 
-    else:
-        kafka_client.get_messages(
-            num_messages_to_consume=num_messages_to_consume,
-            max_package_size_in_msgs=max_messages_per_package,
-            dir_path=dir_path_to_save_files,
-            bucket_name=bucket_name,
-            dry_run=dry_run)
+            elif opts.action == 'reload':
+                if not dump_id:
+                    dump_id = kafka_client.find_latest_dump_id(bucket_name)
+                    logger.info('Using latest dump id <{}>'.format(dump_id))
+                kafka_client.reload_kafka_server(
+                    bucket_name=bucket_name,
+                    local_dir=local_dir,
+                    dump_id=dump_id)
