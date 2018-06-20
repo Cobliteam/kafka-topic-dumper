@@ -43,7 +43,7 @@ class KafkaClient(object):
         self.topic = topic
         self.consumer = None
         self.producer = None
-        self.timeout = 1
+        self.timeout = 60
         self.dump_state_topic = 'kafka-topic-dumper'
         self.s3_path = 'kafka-topic-dumper-data/'
         self.s3_client = None
