@@ -355,7 +355,10 @@ class KafkaClient(object):
 
         state = self._gen_state(dump_id)
 
+        current_file_number = 0
+        msg = "Loading messages from file {}/{} to kafka"
         for file_name, file_size in files:
+            current_file_number += 1
             tmp_name = '{}.tmp'.format(path.basename(file_name))
             file_path = path.join(download_dir, tmp_name)
             s3_client.download_file(
@@ -363,6 +366,7 @@ class KafkaClient(object):
                 Filename=file_path,
                 Key=file_name,
                 Callback=ProgressPercentage(tmp_name, file_size))
+            logger.info(msg.format(current_file_number, len(files)))
             try:
                 table = pq.read_table(file_path)
                 df = table.to_pandas()
