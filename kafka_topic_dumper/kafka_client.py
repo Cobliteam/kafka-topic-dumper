@@ -7,6 +7,7 @@ from os import makedirs, path, remove
 from uuid import uuid4
 
 import boto3
+from time import sleep
 
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.structs import OffsetAndMetadata, TopicPartition
@@ -103,6 +104,13 @@ class KafkaClient(object):
 
     def _get_partitions(self, topic):
         partitions = self.consumer.partitions_for_topic(topic) or []
+
+        count = 0
+        while not partitions and count < 500000:
+            self.consumer.subscribe(topic)
+            partitions = self.consumer.partitions_for_topic(topic) or []
+            sleep(0.1)
+
         msg = "Got the following partitions=<{}> for topic=<{}>"
         logger.info(msg.format(partitions, topic))
 
