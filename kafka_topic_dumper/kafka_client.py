@@ -7,6 +7,7 @@ from os import makedirs, path, remove
 from uuid import uuid4
 
 import boto3
+from time import sleep
 
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.structs import OffsetAndMetadata, TopicPartition
@@ -103,6 +104,13 @@ class KafkaClient(object):
 
     def _get_partitions(self, topic):
         partitions = self.consumer.partitions_for_topic(topic) or []
+
+        count = 0
+        while not partitions and count < 500000:
+            self.consumer.subscribe(topic)
+            partitions = self.consumer.partitions_for_topic(topic) or []
+            sleep(0.1)
+
         msg = "Got the following partitions=<{}> for topic=<{}>"
         logger.info(msg.format(partitions, topic))
 
@@ -355,7 +363,10 @@ class KafkaClient(object):
 
         state = self._gen_state(dump_id)
 
+        current_file_number = 0
+        msg = "Loading messages from file {}/{} to kafka"
         for file_name, file_size in files:
+            current_file_number += 1
             tmp_name = '{}.tmp'.format(path.basename(file_name))
             file_path = path.join(download_dir, tmp_name)
             s3_client.download_file(
@@ -363,6 +374,7 @@ class KafkaClient(object):
                 Filename=file_path,
                 Key=file_name,
                 Callback=ProgressPercentage(tmp_name, file_size))
+            logger.info(msg.format(current_file_number, len(files)))
             try:
                 table = pq.read_table(file_path)
                 df = table.to_pandas()
