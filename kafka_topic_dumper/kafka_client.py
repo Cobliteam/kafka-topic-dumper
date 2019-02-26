@@ -44,7 +44,7 @@ class KafkaClient(object):
         self.topic = topic
         self.consumer = None
         self.producer = None
-        self.timeout = 60
+        self.timeout_in_sec = 60
         self.dump_state_topic = 'kafka-topic-dumper'
         self.s3_path = 'kafka-topic-dumper-data/'
         self.s3_client = None
@@ -197,6 +197,14 @@ class KafkaClient(object):
         logger.debug('Deleting file <{}>'.format(file_name))
         remove(local_path)
 
+    def _get_transformer_class(self, transformer_id):
+        [module_name, class_name] = transformer_id.split(":")
+
+        module = __import__(module_name, globals(), locals(), [class_name], 0)
+        cl = getattr(module, class_name)
+
+        return cl()
+
     def get_messages(self, num_messages_to_consume, max_package_size_in_msgs,
                      local_dir, bucket_name, dry_run, dump_id):
 
@@ -289,7 +297,7 @@ class KafkaClient(object):
 
         return file_names
 
-    def _gen_state(self, dump_id):
+    def _gen_state(self, dump_id, transformer_id):
         _, _, end_offsets = self._get_offsets()
 
         if not end_offsets:
@@ -305,7 +313,8 @@ class KafkaClient(object):
             'dump_id': dump_id,
             'topic_name': self.topic,
             'offsets': state_offsets,
-            'dump_date': int(time.time())}
+            'dump_date': int(time.time()),
+            'transformer_id': transformer_id}
 
         return state
 
@@ -314,10 +323,10 @@ class KafkaClient(object):
             topic=self.dump_state_topic,
             key=self.topic,
             value=json.dumps(state))
-        future.get(timeout=self.timeout)
+        future.get(timeout=self.timeout_in_sec)
         logger.info('State saved')
 
-    def _get_last_state_message(self, dump_id):
+    def _get_last_state_message(self):
         beginning_offsets, _, end_offsets = (
             self._get_offsets(topic=self.dump_state_topic))
 
@@ -337,12 +346,14 @@ class KafkaClient(object):
 
         return None
 
-    def _get_state(self, dump_id):
+    def _get_state(self, dump_id, trasformer_id):
         if self.allow_hotreload:
             state_message = self._get_last_state_message(dump_id)
             if state_message and \
                state_message['topic_name'] == self.topic and \
-               state_message['dump_id'] == dump_id:
+               state_message['dump_id'] == dump_id and \
+               'transformer_id' in state_message and \
+               state_message['trasformer_id'] == trasformer_id:
                     return state_message['offsets']
         return None
 
@@ -359,10 +370,14 @@ class KafkaClient(object):
         self._set_offsets(offsets)
 
     def _load_dump(self, bucket_name, dump_id, download_dir, files,
-                   transformer_class):
+                   transformer_id):
         s3_client = self._get_s3_client()
 
-        state = self._gen_state(dump_id)
+        transformer_class = self._get_transformer_class(transformer_id)
+        msg = 'Using class=<{}> to transform events before production'
+        logger.info(msg.format(type(transformer_class)))
+
+        state = self._gen_state(dump_id, transformer_id)
 
         current_file_number = 0
         msg = "Loading messages from file {}/{} to kafka"
@@ -384,15 +399,15 @@ class KafkaClient(object):
                         self.producer.send(self.topic, key=row[1],
                                            value=row[2])
                 logger.debug('File <{}> reloaded to kafka'.format(file_path))
-                self.producer.flush()
+                self.producer.flush(self.timeout_in_sec)
             finally:
                 remove(file_path)
 
         self._save_state(state)
 
     def reload_kafka_server(self, bucket_name, local_dir, dump_id,
-                            transformer_class):
-        dump_offsets = self._get_state(dump_id)
+                            transformer_id):
+        dump_offsets = self._get_state(dump_id, transformer_id)
 
         if dump_offsets:
             self._reset_offsets(dump_offsets=dump_offsets)
@@ -401,7 +416,7 @@ class KafkaClient(object):
                                          dump_id=dump_id)
             self._load_dump(bucket_name=bucket_name, dump_id=dump_id,
                             download_dir=local_dir, files=files,
-                            transformer_class=transformer_class)
+                            transformer_id=transformer_id)
 
         logger.info('Reload done!')
 
