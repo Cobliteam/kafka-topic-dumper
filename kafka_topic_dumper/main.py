@@ -1,6 +1,7 @@
 import argparse
 import logging
 import tempfile
+import json
 import sys
 from datetime import datetime
 
@@ -66,6 +67,12 @@ def parse_command_line():
                                  'will not load it again, it will only reset '
                                  'offsets for this consumer-group.')
 
+    reload_cmd.add_argument('-m', '--multiply-event-report-messages',
+                            default=None, type=int,
+                            help='When reloading a dump of event-reports '
+                                 'messages each message will be produced m '
+                                 'times with a new device-id')
+
     reload_cmd.set_defaults(action='reload')
 
     opts = parser.parse_args()
@@ -79,6 +86,25 @@ def parse_command_line():
     return opts
 
 
+def identity_processing(row):
+    yield row
+
+
+def demultiplex_status_event(row, m):
+    raw_key = row[1]
+    raw_value = json.loads(row[2])
+    original_esn = raw_value["optionsHeader"]["mobileId"]
+
+    for i in range(m):
+        if i == 0:
+            yield row
+        else:
+            key = raw_key + str(i).encode('ascii')
+            new_esn = "{}{}".format(original_esn, i)
+            raw_value["optionsHeader"]["mobileId"] = new_esn
+            value = json.dumps(raw_value)
+            yield (None, key, value)
+
 def main():
     logging.basicConfig(
         format='%(asctime)s: %(name)s - %(levelname)s - %(message)s',
@@ -91,6 +117,9 @@ def main():
     group_id = getattr(opts, 'reload_consumer_group', None)
     topic = opts.topic
     dump_id = opts.prefix
+    multiply = getattr(opts, 'multiply_event_report_messages', None)
+
+    logger.info("multiply=<{}>".format(multiply))
 
     with KafkaClient(topic=topic, group_id=group_id,
                      bootstrap_servers=bootstrap_servers) as kafka_client:
@@ -114,7 +143,14 @@ def main():
                 if not dump_id:
                     dump_id = kafka_client.find_latest_dump_id(bucket_name)
                     logger.info('Using latest dump id <{}>'.format(dump_id))
+
+                if multiply is None or multiply == 1:
+                    row_preprocessing = identity_processing
+                else:
+                    row_preprocessing = lambda x: demultiplex_status_event(x, multiply)
+
                 kafka_client.reload_kafka_server(
                     bucket_name=bucket_name,
                     local_dir=local_dir,
-                    dump_id=dump_id)
+                    dump_id=dump_id,
+                    row_preprocessing = row_preprocessing)
