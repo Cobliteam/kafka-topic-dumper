@@ -66,6 +66,11 @@ def parse_command_line():
                                  'will not load it again, it will only reset '
                                  'offsets for this consumer-group.')
 
+    reload_cmd.add_argument('-T', '--transformer',
+                            default='kafka_topic_dumper.transformer:Identity',
+                            help='package:class that will be used to transform '
+                                 'each message before producing')
+
     reload_cmd.set_defaults(action='reload')
 
     opts = parser.parse_args()
@@ -77,6 +82,16 @@ def parse_command_line():
     print(opts)
 
     return opts
+
+
+def get_transformer_class(pre_processing):
+    [module_name, class_name] = pre_processing.split(":")
+
+    logger.info(module_name)
+    module = __import__(module_name, globals(), locals(), [class_name], 0)
+    cl = getattr(module, class_name)
+
+    return cl()
 
 
 def main():
@@ -91,6 +106,7 @@ def main():
     group_id = getattr(opts, 'reload_consumer_group', None)
     topic = opts.topic
     dump_id = opts.prefix
+    transformer = opts.transformer
 
     with KafkaClient(topic=topic, group_id=group_id,
                      bootstrap_servers=bootstrap_servers) as kafka_client:
@@ -114,7 +130,12 @@ def main():
                 if not dump_id:
                     dump_id = kafka_client.find_latest_dump_id(bucket_name)
                     logger.info('Using latest dump id <{}>'.format(dump_id))
+                cl = get_transformer_class(transformer)
+
+                msg = 'Using class=<{}> to pre process events'
+                logger.info(msg.format(type(cl)))
                 kafka_client.reload_kafka_server(
                     bucket_name=bucket_name,
                     local_dir=local_dir,
-                    dump_id=dump_id)
+                    dump_id=dump_id,
+                    transformer_class=cl)

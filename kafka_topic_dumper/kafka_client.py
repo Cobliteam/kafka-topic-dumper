@@ -358,7 +358,8 @@ class KafkaClient(object):
 
         self._set_offsets(offsets)
 
-    def _load_dump(self, bucket_name, dump_id, download_dir, files):
+    def _load_dump(self, bucket_name, dump_id, download_dir, files,
+                   transformer_class):
         s3_client = self._get_s3_client()
 
         state = self._gen_state(dump_id)
@@ -378,17 +379,19 @@ class KafkaClient(object):
             try:
                 table = pq.read_table(file_path)
                 df = table.to_pandas()
-                for row in df.itertuples():
-                    future = self.producer.send(self.topic, key=row[1],
-                                                value=row[2])
-                    future.get(timeout=self.timeout)
+                for raw_row in df.itertuples():
+                    for row in transformer_class.transform(raw_row):
+                        future = self.producer.send(self.topic, key=row[1],
+                                                    value=row[2])
+                        future.get(timeout=self.timeout)
                 logger.debug('File <{}> reloaded to kafka'.format(file_path))
             finally:
                 remove(file_path)
 
         self._save_state(state)
 
-    def reload_kafka_server(self, bucket_name, local_dir, dump_id):
+    def reload_kafka_server(self, bucket_name, local_dir, dump_id,
+                            transformer_class):
         dump_offsets = self._get_state(dump_id)
 
         if dump_offsets:
@@ -397,7 +400,8 @@ class KafkaClient(object):
             files = self._get_file_names(bucket_name=bucket_name,
                                          dump_id=dump_id)
             self._load_dump(bucket_name=bucket_name, dump_id=dump_id,
-                            download_dir=local_dir, files=files)
+                            download_dir=local_dir, files=files,
+                            transformer_class=transformer_class)
 
         logger.info('Reload done!')
 
