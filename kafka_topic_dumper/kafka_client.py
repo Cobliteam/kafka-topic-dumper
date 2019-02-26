@@ -381,10 +381,11 @@ class KafkaClient(object):
                 df = table.to_pandas()
                 for raw_row in df.itertuples():
                     for row in row_preprocessing(raw_row):
-                        future = self.producer.send(self.topic, key=row[1],
-                                                    value=row[2])
-                    future.get(timeout=self.timeout)
+                        self.producer.send(self.topic, key=row[1],
+                                           value=row[2])
                 logger.debug('File <{}> reloaded to kafka'.format(file_path))
+
+                self.producer.flush()
             finally:
                 remove(file_path)
 
