@@ -56,7 +56,37 @@ optional arguments:
   -b BUCKET_NAME, --bucket-name BUCKET_NAME
                         The AWS-S3 bucket name to send dump files.
   -p PATH, --path PATH  Path to folder where to store local files.
+
+
+$kafka-topic-dumper dump -h
+usage: kafka-topic-dumper dump [-h] [-n NUM_MESSAGES]
+                               [-m MAX_MESSAGES_PER_PACKAGE] [-d]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -n NUM_MESSAGES, --num-messages NUM_MESSAGES
+                        Number of messages to try dump.
+  -m MAX_MESSAGES_PER_PACKAGE, --max-messages-per-package MAX_MESSAGES_PER_PACKAGE
+                        Maximum number of messages per dump file.
+  -d, --dry-run         In dry run mode, kafka-topic-dumper will generate
+                        local files. But will not send it to AWS S3 bucket.
+
+$kafka-topic-dumper reload -h
+usage: kafka-topic-dumper reload [-h] [-g RELOAD_CONSUMER_GROUP]
+                                 [-T TRANSFORMER]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -g RELOAD_CONSUMER_GROUP, --reload-consumer-group RELOAD_CONSUMER_GROUP
+                        Whe reloading a dump of messages that already was in
+                        kafka, kafka-topic-dumper will not load it again, it
+                        will only reset offsets for this consumer-group.
+  -T TRANSFORMER, --transformer TRANSFORMER
+                        package:class that will be used to transform each
+                        message before producing
 ```
+
+
 
 ## Basic example
 The following command will dump to the folder named `data`,` 10000` messages

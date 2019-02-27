@@ -66,6 +66,11 @@ def parse_command_line():
                                  'will not load it again, it will only reset '
                                  'offsets for this consumer-group.')
 
+    reload_cmd.add_argument('-T', '--transformer',
+                            default='kafka_topic_dumper.transformer:Identity',
+                            help='package:class that will be used to transform '
+                                 'each message before producing')
+
     reload_cmd.set_defaults(action='reload')
 
     opts = parser.parse_args()
@@ -91,6 +96,7 @@ def main():
     group_id = getattr(opts, 'reload_consumer_group', None)
     topic = opts.topic
     dump_id = opts.prefix
+    transformer_id = opts.transformer
 
     with KafkaClient(topic=topic, group_id=group_id,
                      bootstrap_servers=bootstrap_servers) as kafka_client:
@@ -114,7 +120,9 @@ def main():
                 if not dump_id:
                     dump_id = kafka_client.find_latest_dump_id(bucket_name)
                     logger.info('Using latest dump id <{}>'.format(dump_id))
+
                 kafka_client.reload_kafka_server(
                     bucket_name=bucket_name,
                     local_dir=local_dir,
-                    dump_id=dump_id)
+                    dump_id=dump_id,
+                    transformer_id=transformer_id)
