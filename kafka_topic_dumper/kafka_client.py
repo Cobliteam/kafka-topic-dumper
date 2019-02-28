@@ -346,14 +346,14 @@ class KafkaClient(object):
 
         return None
 
-    def _get_state(self, dump_id, trasformer_id):
+    def _get_state(self, dump_id, transformer_id):
         if self.allow_hotreload:
-            state_message = self._get_last_state_message(dump_id)
+            state_message = self._get_last_state_message()
             if state_message and \
                state_message['topic_name'] == self.topic and \
                state_message['dump_id'] == dump_id and \
                'transformer_id' in state_message and \
-               state_message['trasformer_id'] == trasformer_id:
+               state_message['transformer_id'] == transformer_id:
                     return state_message['offsets']
         return None
 
