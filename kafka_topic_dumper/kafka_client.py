@@ -1,7 +1,6 @@
 import logging
 import time
 import json
-import re
 from math import ceil
 from os import makedirs, path, remove
 from uuid import uuid4
@@ -370,12 +369,10 @@ class KafkaClient(object):
         self._set_offsets(offsets)
 
     def _load_dump(self, bucket_name, dump_id, download_dir, files,
-                   transformer_id):
+                   transformer_instance):
         s3_client = self._get_s3_client()
 
-        transformer_class = self._get_transformer_class(transformer_id)
-        msg = 'Using class=<{}> to transform events before production'
-        logger.info(msg.format(type(transformer_class)))
+        transformer_id = transformer_instance.get_id()
 
         state = self._gen_state(dump_id, transformer_id)
 
@@ -395,7 +392,7 @@ class KafkaClient(object):
                 table = pq.read_table(file_path)
                 df = table.to_pandas()
                 for raw_row in df.itertuples():
-                    for row in transformer_class.transform(raw_row):
+                    for row in transformer_instance.transform(raw_row):
                         self.producer.send(self.topic, key=row[1],
                                            value=row[2])
                 logger.debug('File <{}> reloaded to kafka'.format(file_path))
@@ -406,7 +403,12 @@ class KafkaClient(object):
         self._save_state(state)
 
     def reload_kafka_server(self, bucket_name, local_dir, dump_id,
-                            transformer_id):
+                            transformer_class):
+        transformer_instance = self._get_transformer_class(transformer_class)
+        msg = 'Using class=<{}> to transform events before production'
+        logger.info(msg.format(type(transformer_instance)))
+
+        transformer_id = transformer_instance.get_id()
         dump_offsets = self._get_state(dump_id, transformer_id)
 
         if dump_offsets:
@@ -416,7 +418,7 @@ class KafkaClient(object):
                                          dump_id=dump_id)
             self._load_dump(bucket_name=bucket_name, dump_id=dump_id,
                             download_dir=local_dir, files=files,
-                            transformer_id=transformer_id)
+                            transformer_instance=transformer_instance)
 
         logger.info('Reload done!')
 

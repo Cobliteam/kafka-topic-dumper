@@ -96,7 +96,7 @@ def main():
     group_id = getattr(opts, 'reload_consumer_group', None)
     topic = opts.topic
     dump_id = opts.prefix
-    transformer_id = getattr(opts, 'transformer', None)
+    transformer_class = getattr(opts, 'transformer', None)
 
     with KafkaClient(topic=topic, group_id=group_id,
                      bootstrap_servers=bootstrap_servers) as kafka_client:
@@ -125,4 +125,4 @@ def main():
                     bucket_name=bucket_name,
                     local_dir=local_dir,
                     dump_id=dump_id,
-                    transformer_id=transformer_id)
+                    transformer_class=transformer_class)
