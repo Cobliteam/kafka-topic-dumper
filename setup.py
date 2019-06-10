@@ -17,7 +17,7 @@ setup(
         'pandas',
         'pyarrow',
         'future',
-        'kafka-python'
+        'kafka-python==1.4.4'
     ],
     entry_points={
         'console_scripts': ['kafka-topic-dumper=kafka_topic_dumper.main:main']
