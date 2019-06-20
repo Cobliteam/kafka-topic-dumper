@@ -39,7 +39,7 @@ class KafkaClient(object):
         else:
             self.group_id = 'kafka_topic_dumper_{}'.format(uuid4())
             self.allow_hotreload = False
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers.split(",")
         self.topic = topic
         self.consumer = None
         self.producer = None
