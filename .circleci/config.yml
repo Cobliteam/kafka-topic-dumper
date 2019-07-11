@@ -36,6 +36,7 @@ jobs:
           name: run tests
           command: |
             . venv/bin/activate
+            pip install -r requirements-dev.txt
             ./test.sh
 
 
