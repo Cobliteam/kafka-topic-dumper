@@ -7,6 +7,21 @@ jobs:
   build:
     docker:
       - image: circleci/python:3.6.1
+      - name: zookeeper
+        image: confluentinc/cp-kafka:4.1.1
+        command:
+          - /usr/bin/zookeeper-server-start
+          - /etc/kafka/zookeeper.properties
+      - name: kafka
+        image: confluentinc/cp-kafka:4.1.1
+        environment:
+          KAFKA_HEAP_OPTS: "-Xmx250M -Xms250M"
+          KAFKA_BROKER_ID: 1
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+          KAFKA_DELETE_TOPIC_ENABLE: "true"
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
 
     working_directory: ~/repo
 

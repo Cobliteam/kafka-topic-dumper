@@ -1,6 +1,6 @@
 from kafka_topic_dumper.kafka_client import KafkaClient
 
-bootstrap_servers = "localhost:9092"
+bootstrap_servers = "kafka:9092"
 topic = "kafka-topic-dumper-test"
 
 
