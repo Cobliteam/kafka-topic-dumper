@@ -1,0 +1,60 @@
+# Python CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-python/ for more details
+#
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/python:3.6.1
+      - name: zookeeper
+        image: confluentinc/cp-kafka:4.1.1
+        command:
+          - /usr/bin/zookeeper-server-start
+          - /etc/kafka/zookeeper.properties
+      - name: kafka
+        image: confluentinc/cp-kafka:4.1.1
+        environment:
+          KAFKA_HEAP_OPTS: "-Xmx250M -Xms250M"
+          KAFKA_BROKER_ID: 1
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+          KAFKA_DELETE_TOPIC_ENABLE: "true"
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+    working_directory: ~/repo
+
+    steps:
+      - checkout
+
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "setup.py" }}
+            # fallback to using the latest cache if no exact match is found
+            - v1-dependencies-
+
+      - run:
+          name: install dependencies
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install .
+
+      - save_cache:
+          paths:
+            - ./venv
+          key: v1-dependencies-{{ checksum "setup.py" }}
+
+      - run:
+          name: run tests
+          command: |
+            . venv/bin/activate
+            pip install -r requirements-dev.txt
+            ./test.sh
+
+
+      - store_artifacts:
+          path: test-reports
+          destination: test-reports

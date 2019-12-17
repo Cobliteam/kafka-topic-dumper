@@ -21,10 +21,10 @@ def parse_command_line():
 
     parser.add_argument('-s', '--bootstrap-servers', default='localhost:9092',
                         help='host[:port] string (or list of host[:port] '
-                             'strings) that the consumer should contact to '
-                             'bootstrap initial cluster metadata. If no '
-                             'servers are specified, will default to '
-                             'localhost:9092.')
+                             'strings concatened by ",") that the consumer '
+                             'should contact to bootstrap initial cluster '
+                             'metadata. If no servers are specified, will '
+                             'default to localhost:9092.')
 
     parser.add_argument('-b', '--bucket-name', default='kafka-topic-dumper',
                         help='The AWS-S3 bucket name to send dump files.')

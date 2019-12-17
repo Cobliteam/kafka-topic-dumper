@@ -49,10 +49,10 @@ optional arguments:
   -t TOPIC, --topic TOPIC
                         Kafka topic to fetch messages from.
   -s BOOTSTRAP_SERVERS, --bootstrap-servers BOOTSTRAP_SERVERS
-                        host[:port] string (or list of host[:port] strings)
-                        that the consumer should contact to bootstrap initial
-                        cluster metadata. If no servers are specified, will
-                        default to localhost:9092.
+                        host[:port] string (or list of host[:port] strings
+                        concatened by ",") that the consumer should contact to
+                        bootstrap initial cluster metadata. If no servers are
+                        specified, will default to localhost:9092.
   -b BUCKET_NAME, --bucket-name BUCKET_NAME
                         The AWS-S3 bucket name to send dump files.
   -p PATH, --path PATH  Path to folder where to store local files.

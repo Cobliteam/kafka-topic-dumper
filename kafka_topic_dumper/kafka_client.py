@@ -39,7 +39,7 @@ class KafkaClient(object):
         else:
             self.group_id = 'kafka_topic_dumper_{}'.format(uuid4())
             self.allow_hotreload = False
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers.split(",")
         self.topic = topic
         self.consumer = None
         self.producer = None
@@ -264,6 +264,7 @@ class KafkaClient(object):
         response_iterator = paginator.paginate(Bucket=bucket_name,
                                                Prefix=prefix,
                                                Delimiter='/')
+
         def strip(r):
             return r['Prefix'][len(prefix):].rstrip('/')
 
@@ -336,7 +337,7 @@ class KafkaClient(object):
                 num_messages_to_consume=1)
             self._set_offsets(offsets)
             self.consumer.subscribe(self.dump_state_topic)
-            messages = [json.loads(m.decode()) for _, m in
+            messages = [json.loads(m.decode()) for k, m in
                         self._get_messages(num_messages_available)]
             if messages:
                 last_state_message = max(messages,
@@ -353,7 +354,7 @@ class KafkaClient(object):
                state_message['dump_id'] == dump_id and \
                'transformer_id' in state_message and \
                state_message['transformer_id'] == transformer_id:
-                    return state_message['offsets']
+                return state_message['offsets']
         return None
 
     def _reset_offsets(self, dump_offsets):
