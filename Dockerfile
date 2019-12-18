@@ -5,6 +5,7 @@ WORKDIR /app
 COPY ./kafka_topic_dumper ./kafka_topic_dumper
 COPY ./setup.cfg .
 COPY ./setup.py .
+COPY ./requirements.txt .
 
 RUN pip3 install -e .
 
