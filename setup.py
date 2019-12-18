@@ -1,6 +1,16 @@
+import os
+
 from setuptools import setup
 
 VERSION = '0.0.2'
+
+def get_requirements():
+    """Gets the minimum libraries needed for installation and usage
+    """
+    base_path = os.path.dirname(__file__)
+    with open(os.path.join(base_path, 'requirements.txt')) as reqs:
+        return [req.strip() for req in reqs]
+
 
 setup(
     name='kafka-topic-dumper',
@@ -12,13 +22,7 @@ setup(
     author='Evandro Sanches',
     author_email='evnadro@cobli.co',
     license='MIT',
-    install_requires=[
-        'boto3',
-        'pandas',
-        'pyarrow',
-        'future',
-        'kafka-python==1.4.4'
-    ],
+    install_requires=get_requirements(),
     entry_points={
         'console_scripts': ['kafka-topic-dumper=kafka_topic_dumper.main:main']
     },
