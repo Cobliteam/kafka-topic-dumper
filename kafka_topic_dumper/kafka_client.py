@@ -56,7 +56,7 @@ class KafkaClient(object):
             self.consumer = KafkaConsumer(
                 bootstrap_servers=self.bootstrap_servers,
                 group_id=self.group_id,
-                enable_auto_commit=False)
+                enable_auto_commit=True)
         except Exception as err:
             msg = 'Can not create KafkaConsumer instance. Reason=<{}>'
             logger.exception(msg.format(err))
